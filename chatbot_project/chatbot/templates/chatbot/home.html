@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Online Book Reader</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Highlight.js CSS for code syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <style>
+        body {
+            background: linear-gradient(120deg, #f8fafc 0%, #e0e7ff 100%);
+            font-family: 'Georgia', 'Times New Roman', serif;
+            margin: 0;
+            padding: 0;
+        }
+        .reader-container {
+            max-width: 700px;
+            margin: 40px auto;
+            background: #fff;
+            border-radius: 18px;
+            box-shadow: 0 8px 32px rgba(60, 72, 88, 0.13);
+            padding: 36px 32px 28px 32px;
+        }
+        .reader-title {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: #2d3748;
+            text-align: left;
+            margin-bottom: 10px;
+            letter-spacing: 1px;
+            font-family: 'Merriweather', 'Georgia', serif;
+        }
+        .reader-author {
+            font-size: 1.1rem;
+            color: #64748b;
+            margin-bottom: 24px;
+            text-align: left;
+            font-style: italic;
+        }
+        .reader-content {
+            min-height: 350px;
+            max-height: 420px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 24px 20px;
+            background: #f9fafb;
+            margin-bottom: 22px;
+            box-sizing: border-box;
+            font-size: 1.13rem;
+            line-height: 1.7;
+            color: #22223b;
+        }
+        .reader-input-area {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .reader-input-area input {
+            flex: 1;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #cbd5e1;
+            font-size: 1rem;
+            outline: none;
+            background: #f8fafc;
+            transition: border 0.2s;
+        }
+        .reader-input-area input:focus {
+            border: 1.5px solid #3b82f6;
+        }
+        .reader-input-area button {
+            background: #3b82f6;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 22px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .reader-input-area button:hover {
+            background: #2563eb;
+        }
+        .loading {
+            color: #64748b;
+            font-size: 0.95rem;
+            margin-top: 8px;
+            text-align: center;
+        }
+        /* Code block container and copy button styles */
+        .code-block-container {
+            position: relative;
+            margin: 18px 0;
+        }
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: #3b82f6;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 0.95rem;
+            cursor: pointer;
+            opacity: 0.85;
+            z-index: 2;
+            transition: background 0.2s, opacity 0.2s;
+        }
+        .copy-btn:hover {
+            background: #2563eb;
+            opacity: 1;
+        }
+        pre code {
+            display: block;
+            padding: 18px 16px 16px 16px;
+            border-radius: 12px;
+            font-size: 1rem;
+            background: #23272e;
+            color: #f8fafc;
+            overflow-x: auto;
+            margin: 0;
+            font-family: 'Fira Mono', 'Consolas', 'Menlo', monospace;
+        }
+        /* Hide scrollbar for a cleaner look */
+        .reader-content::-webkit-scrollbar {
+            width: 8px;
+            background: #f3f4f6;
+        }
+        .reader-content::-webkit-scrollbar-thumb {
+            background: #e0e7ff;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+<div class="reader-container">
+    <div class="reader-title">Learning Concepts</div>
+    <div class="reader-author">by kiran</div>
+    <div class="reader-content" id="chat-box"></div>
+    <div class="loading" id="loading" style="display:none;">Loading next page...</div>
+    <form class="reader-input-area" id="chat-form" autocomplete="off">
+        {% csrf_token %}
+        <input type="text" id="user-input" placeholder="Search or ask about this book..." autofocus required>
+        <button type="submit">Go</button>
+    </form>
+</div>
+<!-- Highlight.js JS for syntax highlighting -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>
+    const chatBox = document.getElementById('chat-box');
+    const chatForm = document.getElementById('chat-form');
+    const userInput = document.getElementById('user-input');
+    const loading = document.getElementById('loading');
+
+    // Helper to escape HTML
+    function escapeHtml(text) {
+        return text.replace(/[&<>"']/g, function(m) {
+            return ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            })[m];
+        });
+    }
+
+    // Parse markdown-like code blocks and render with copy button
+    function renderMessage(text) {
+        // Regex to match ```lang\ncode\n```
+        const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+        let lastIndex = 0;
+        let result = '';
+        let match;
+        let codeBlockId = 0;
+
+        while ((match = codeBlockRegex.exec(text)) !== null) {
+            // Add text before code block
+            result += escapeHtml(text.slice(lastIndex, match.index)).replace(/\n/g, '<br>');
+            const lang = match[1] || '';
+            const code = match[2];
+            const codeId = `code-block-${Date.now()}-${codeBlockId++}`;
+            result += `
+                <div class="code-block-container">
+                    <button class="copy-btn" data-target="${codeId}">Copy</button>
+                    <pre><code id="${codeId}" class="${lang}">${escapeHtml(code)}</code></pre>
+                </div>
+            `;
+            lastIndex = codeBlockRegex.lastIndex;
+        }
+        // Add remaining text
+        result += escapeHtml(text.slice(lastIndex)).replace(/\n/g, '<br>');
+        return result;
+    }
+
+    function appendMessage(text, sender) {
+        const bubble = document.createElement('div');
+        bubble.className = '';
+        bubble.style.marginBottom = '18px';
+        bubble.innerHTML = renderMessage(text);
+        chatBox.appendChild(bubble);
+        chatBox.scrollTop = chatBox.scrollHeight;
+
+        // Highlight code blocks
+        bubble.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightElement(block);
+        });
+
+        // Add copy functionality
+        bubble.querySelectorAll('.copy-btn').forEach(btn => {
+            btn.onclick = function() {
+                const codeElem = document.getElementById(btn.getAttribute('data-target'));
+                if (codeElem) {
+                    navigator.clipboard.writeText(codeElem.textContent);
+                    btn.textContent = 'Copied!';
+                    setTimeout(() => btn.textContent = 'Copy', 1200);
+                }
+            };
+        });
+    }
+
+    chatForm.onsubmit = function(e) {
+        e.preventDefault();
+        const text = userInput.value.trim();
+        if (!text) return;
+        appendMessage(`<b>You:</b> ${escapeHtml(text)}`, 'user');
+        userInput.value = '';
+        loading.style.display = 'block';
+
+        fetch("{% url 'get_response' %}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "X-CSRFToken": "{{ csrf_token }}"
+            },
+            body: "user_input=" + encodeURIComponent(text)
+        })
+        .then(response => response.json())
+        .then(data => {
+            appendMessage(data.response, 'bot');
+        })
+        .catch(() => {
+            appendMessage("Sorry, something went wrong.", 'bot');
+        })
+        .finally(() => {
+            loading.style.display = 'none';
+        });
+    };
+</script>
+</body>
+</html>

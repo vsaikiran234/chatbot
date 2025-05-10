@@ -1,0 +1,8 @@
+The project folder (chatbot_project/chatbot_project/) manages overall settings and routes.
+The app folder (chatbot_project/chatbot/) contains the actual features and logic.
+The project’s settings.py lists your app (chatbot) in the INSTALLED_APPS section, connecting them.
+Summary:
+
+The project folder = configuration and entry point.
+The app folder = your chatbot’s code and features.
+Both are required for your Django project to work.
